@@ -1,0 +1,19 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add Novo SysControl device",
+        "description": "Configure an ND-M1000 (or compatible Novo) panel.",
+        "data": {
+          "name": "Name",
+          "host": "Host/IP",
+          "port": "Port"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect or complete handshake.",
+      "invalid_response": "Device did not respond as expected."
+    }
+  }
+}

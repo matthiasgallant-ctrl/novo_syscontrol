@@ -1,0 +1,18 @@
+DOMAIN = "novo_syscontrol"
+
+CONF_HOST = "host"
+CONF_PORT = "port"
+CONF_NAME = "name"
+
+DEFAULT_PORT = 5050
+DEFAULT_SCAN_INTERVAL = 30
+
+CONNECT_TIMEOUT = 5.0
+COMMAND_TIMEOUT = 5.0
+GREETING_TIMEOUT = 5.0
+
+GREETING_MARKER = "please enter your command"
+
+ATTR_PLAYLIST = "playlist"
+SERVICE_PLAY_PLAYLIST = "play_playlist"
+SERVICE_SEND_COMMAND = "send_command"
