@@ -1,7 +1,7 @@
 {
   "domain": "novo_syscontrol",
   "name": "Novo SysControl",
-  "codeowners": ["@your-github"],
+  "codeowners": ["@matthiasgallant-ctrl"],
   "config_flow": true,
   "documentation": "https://support.launchnovo.com/kb/bk3-syscontrol-network-based-control/",
   "integration_type": "device",
