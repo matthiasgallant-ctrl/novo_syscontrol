@@ -1,3 +1,5 @@
 {
-  "name": "Vivitek SysControl"
+  "name": "Vivitek SysControl",
+  "country": "BE",
+  "homeassistant": "2026.8.2"
 }
