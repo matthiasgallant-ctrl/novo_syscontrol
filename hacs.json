@@ -1,6 +1,5 @@
 {
   "name": "Vivitek SysControl",
   "country": "BE",
-  "homeassistant": "2026.8.2",
-  "persistent_directory": "novo_syscontrol"
+  "homeassistant": "2026.8.2"
 }
