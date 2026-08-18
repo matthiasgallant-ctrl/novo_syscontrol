@@ -18,4 +18,4 @@ jobs:
         with:
           category: "integration"
         env:
-          GITHUB_TOKEN: ${{secrets.HACS_ACTION_GITHUB_TOKEN}}
+          GITHUB_TOKEN: ${{ secrets.HACS_ACTION_GITHUB_TOKEN }}
