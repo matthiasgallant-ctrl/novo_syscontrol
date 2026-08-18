@@ -4,10 +4,9 @@
   "codeowners": ["@matthiasgallant-ctrl"],
   "config_flow": true,
   "documentation": "https://support.launchnovo.com/kb/bk3-syscontrol-network-based-control/",
-  "issue_tracker": "https://github.com/matthiasgallant-ctrl/novo_syscontrol/issues",
   "integration_type": "device",
   "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/matthiasgallant-ctrl/novo_syscontrol/issues",
   "requirements": [],
-  "version": "1.0.0",
-  "import_executor": true
+  "version": "1.0.0"
 }
