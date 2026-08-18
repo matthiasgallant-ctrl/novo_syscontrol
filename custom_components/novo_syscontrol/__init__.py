@@ -25,6 +25,8 @@ from .coordinator import NovoSysControlCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
 PLATFORMS = [
     Platform.SWITCH, # power, mute
     Platform.NUMBER, # volume, backlight
