@@ -1,0 +1,17 @@
+send_command:
+  name: Send command
+  description: Send a raw command to the Novo SysControl device.
+  fields:
+    entry_id:
+      name: Config entry
+      description: The Home Assistant config entry ID of the SysControl device.
+      required: true
+      selector:
+        text:
+
+    command:
+      name: Command
+      description: Command to send to the SysControl device.
+      required: true
+      selector:
+        text:
