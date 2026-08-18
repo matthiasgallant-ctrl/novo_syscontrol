@@ -35,6 +35,20 @@ PLATFORMS = [
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+
+    async def handle_send_command(call):
+        coordinator = _get_coordinator(hass, call.data["entry_id"])
+        command = call.data["command"]
+
+        await coordinator.client.send_command(command)
+        await coordinator.async_request_refresh()
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SEND_COMMAND,
+        handle_send_command,
+    )
+
     return True
 
 
@@ -49,28 +63,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 
-# Pre-import platforms in parallel om blocking I/O in de event loop te voorkomen
-    await asyncio.gather(*[
-        hass.async_add_executor_job(
-            importlib.import_module,
-            f"custom_components.novo_syscontrol.{platform}"
-        )
-        for platform in PLATFORMS
-    ])
-
-# Nu kan het veilig forwarden zonder de loop te blokkeren
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-
-    async def handle_send_command(call):
-        coordinator = _get_coordinator(hass, call.data["entry_id"])
-        command = call.data["command"]
-        await coordinator.client.send_command(command)
-        await coordinator.async_request_refresh()
-
-    hass.services.async_register(DOMAIN, SERVICE_SEND_COMMAND, handle_send_command)
-
-    return True
-
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
