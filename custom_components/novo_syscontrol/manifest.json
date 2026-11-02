@@ -1,14 +1,14 @@
 {
   "domain": "novo_syscontrol",
   "name": "Novo SysControl",
+  "categories": [
+    "media_entertainment"
+  ],
   "codeowners": ["@matthiasgallant-ctrl"],
   "config_flow": true,
   "documentation": "https://support.launchnovo.com/kb/bk3-syscontrol-network-based-control/",
   "integration_type": "device",
   "iot_class": "local_polling",
-  "categories": [
-    "media_entertainment"
-  ],
   "issue_tracker": "https://github.com/matthiasgallant-ctrl/novo_syscontrol/issues",
   "requirements": [],
   "version": "1.0.1"
