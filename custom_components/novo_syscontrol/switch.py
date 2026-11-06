@@ -3,10 +3,12 @@ from __future__ import annotations
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import CONF_NAME, DOMAIN
+from .client import NovoSysControlError
 from .coordinator import NovoSysControlCoordinator
 
 
@@ -47,12 +49,18 @@ class NovoPowerSwitch(NovoBaseSwitch):
         return self.coordinator.data.get("power") == "wakeup"
 
     async def async_turn_on(self, **kwargs) -> None:
-        await self.coordinator.client.send_command("wakeup")
-        await self.coordinator.async_request_refresh()
+        await self._async_set_power(True)
 
     async def async_turn_off(self, **kwargs) -> None:
-        await self.coordinator.client.send_command("standby")
-        await self.coordinator.async_request_refresh()
+        await self._async_set_power(False)
+
+    async def _async_set_power(self, awake: bool) -> None:
+        try:
+            await self.coordinator.client.set_power(awake)
+        except NovoSysControlError as err:
+            raise HomeAssistantError(str(err)) from err
+        finally:
+            await self.coordinator.async_request_refresh()
 
 
 class NovoMuteSwitch(NovoBaseSwitch):

@@ -3,13 +3,16 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-import time
 
 from .const import COMMAND_TIMEOUT, CONNECT_TIMEOUT, DEFAULT_PORT, GREETING_MARKER, GREETING_TIMEOUT
 
 _LOGGER = logging.getLogger(__name__)
 
 MODEL_RE = re.compile(r"\[([^\]]+)\]")
+GET_COMMANDS = {"powerstate", "sourcestate", "volstate", "mutestate", "blstate", "query"}
+POWER_COMMAND_ATTEMPTS = 2
+POWER_STATE_CHECKS = 5
+POWER_CHECK_INTERVAL = 1.0
 
 
 class NovoSysControlError(Exception):
@@ -20,15 +23,28 @@ class NovoSysControlConnectionError(NovoSysControlError):
     """Connection or handshake failed."""
 
 
+class NovoSysControlCommandError(NovoSysControlError):
+    """The screen did not reach the requested state."""
+
+
 class NovoSysControlClient:
     """Async TCP client for Novo SysControl."""
 
     def __init__(self, host: str, port: int = DEFAULT_PORT) -> None:
         self.host = host
         self.port = port
+        self._lock = asyncio.Lock()
 
     async def send_command(self, command: str) -> tuple[str, str | None]:
+        """Serialize commands with polling on this screen."""
+        async with self._lock:
+            return await self._send_command(command)
+
+    async def _send_command(self, command: str) -> tuple[str, str | None]:
+        """Send a command while the caller holds the device lock."""
         command = command.strip()
+        if not command or "\n" in command or "\r" in command:
+            raise NovoSysControlCommandError("Provide one non-empty command")
         _LOGGER.debug("Sending %r to %s:%s", command, self.host, self.port)
 
         try:
@@ -48,9 +64,11 @@ class NovoSysControlClient:
             writer.write(payload)
             await writer.drain()
 
-            response = await self._read_response(reader)
+            response = await self._read_response(reader, required=command in GET_COMMANDS)
             _LOGGER.debug("Response from %s for %r: %r", self.host, command, response)
-            return response, model  # type: ignore[return-value]
+            return response, model
+        except OSError as err:
+            raise NovoSysControlConnectionError(f"Communication failed with {self.host}:{self.port}") from err
         finally:
             writer.close()
             try:
@@ -59,27 +77,14 @@ class NovoSysControlClient:
                 pass
 
     async def _read_greeting(self, reader: asyncio.StreamReader) -> str:
-        buffer = b""
-        
         try:
-            # We bewaken de totale tijd (5.0 seconden uit const.py)
-            async with asyncio.timeout(CONNECT_TIMEOUT):
-                while True:
-                    chunk = await reader.read(1024)
-                    if not chunk:
-                        break
-                        
-                    buffer += chunk
-                    text = buffer.decode("ascii", errors="replace").lower()
-                    
-                    # Stop direct zodra de marker of de dubbele punt is gevonden
-                    if GREETING_MARKER in text or ":" in text:
-                        break
-                        
-        except TimeoutError as err:
-            text_err = buffer.decode("ascii", errors="replace").strip()
+            # The marker alone can arrive before the final prompt character.
+            # readuntil also preserves any following bytes for response parsing.
+            async with asyncio.timeout(GREETING_TIMEOUT):
+                buffer = await reader.readuntil(b":")
+        except (TimeoutError, asyncio.IncompleteReadError, asyncio.LimitOverrunError) as err:
             raise NovoSysControlConnectionError(
-                f"Timeout waiting for greeting. Received so far: {text_err!r}"
+                f"Incomplete greeting from {self.host}:{self.port}"
             ) from err
 
         final_text = buffer.decode("ascii", errors="replace").strip()
@@ -90,32 +95,62 @@ class NovoSysControlClient:
             
         return final_text
 
-    async def _read_response(self, reader: asyncio.StreamReader) -> str:
-        """Lees het antwoord van de Vivitek en filter de statuswaarde eruit."""
+    async def _read_response(self, reader: asyncio.StreamReader, *, required: bool = True) -> str:
+        """Read status or acknowledgement with a total, rather than per-line, deadline."""
         try:
-            while True:
-                # Lees regel voor regel
-                chunk = await asyncio.wait_for(reader.readline(), timeout=COMMAND_TIMEOUT)
-                if not chunk:
-                    return ""
+            async with asyncio.timeout(COMMAND_TIMEOUT):
+                while True:
+                    chunk = await reader.readline()
+                    if not chunk:
+                        break
+                    line = chunk.decode("ascii", errors="replace").strip()
+                    _LOGGER.debug("Raw line read from %s: %r", self.host, line)
+                    if line.startswith("[") and "]" in line:
+                        line = line.split("]", 1)[1].strip()
+                    if not line or GREETING_MARKER in line.lower():
+                        continue
+                    if "received" in line.lower() and required:
+                        continue
+                    return line
+        except TimeoutError as err:
+            if required:
+                raise NovoSysControlConnectionError(
+                    f"Timeout waiting for status from {self.host}:{self.port}"
+                ) from err
+        if required:
+            raise NovoSysControlConnectionError(
+                f"Connection closed without status from {self.host}:{self.port}"
+            )
+        # SET commands are allowed to have no acknowledgement. Power commands
+        # are checked separately against the actual reported power state.
+        return ""
 
-                line = chunk.decode("ascii", errors="replace").strip()
-                _LOGGER.debug("Raw line read from Vivitek: %r", line)
+    async def set_power(self, awake: bool) -> None:
+        """Set and verify power; retry once if the screen ignores the command."""
+        command = "wakeup" if awake else "standby"
+        last_state = "unknown"
+        async with self._lock:
+            for attempt in range(POWER_COMMAND_ATTEMPTS):
+                await self._send_command(command)
+                for _ in range(POWER_STATE_CHECKS):
+                    await asyncio.sleep(POWER_CHECK_INTERVAL)
+                    response, _model = await self._send_command("powerstate")
+                    last_state = self._power_state(response)
+                    if last_state == command:
+                        return
+                _LOGGER.warning(
+                    "%s did not reach %s after attempt %s; reported %r",
+                    self.host, command, attempt + 1, last_state,
+                )
+        raise NovoSysControlCommandError(
+            f"{self.host} did not enter {command}; reported power state: {last_state!r}"
+        )
 
-                # Sla lege regels en de "Command ... received" regel over
-                if not line or "received" in line.lower():
-                    continue
-
-                # We hebben de statusregel! Filter de prefix [ND-M1000] eruit
-                if line.startswith("[") and "]" in line:
-                    # Splitst op ']' en pakt het rechterdeel
-                    line = line.split("]", 1)[1].strip()
-
-                return line
-
-        except TimeoutError:
-            _LOGGER.warning("Timeout while waiting for response from Vivitek")
-            return ""
+    @staticmethod
+    def _power_state(response: str) -> str:
+        """Normalize plain and sentence-form power replies."""
+        match = re.search(r"\b(wakeup|standby)\b", response.lower())
+        return match.group(1) if match else response.lower().strip()
 
     @staticmethod
     def _parse_model(greeting: str) -> str | None:
@@ -123,6 +158,11 @@ class NovoSysControlClient:
         return match.group(1) if match else None
 
     async def get_status(self) -> dict:
+        """Keep the entire polling session exclusive with control commands."""
+        async with self._lock:
+            return await self._get_status()
+
+    async def _get_status(self) -> dict:
         """Poll status for ND-M1000 binnen één enkele TCP-sessie."""
         _LOGGER.debug("Opening single session to fetch all status parameters from %s", self.host)
 
@@ -160,6 +200,8 @@ class NovoSysControlClient:
                 _LOGGER.debug("Response for %r: %r", command, response)
                 raw_responses[command] = response
 
+        except OSError as err:
+            raise NovoSysControlConnectionError(f"Communication failed with {self.host}:{self.port}") from err
         finally:
             # 4. Sluit de verbinding pas als alles klaar is (of bij een fout)
             writer.close()
